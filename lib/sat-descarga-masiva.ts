@@ -86,18 +86,28 @@ export class SATDescargaMasiva {
           privateKey = forge.pki.privateKeyFromPem(keyUtf8)
         } catch {}
       }
-      // 4. Intentar como DER PKCS#8 (binario)
+
+      // 4. Intentar como DER PKCS#8 (binario, no encriptado)
       if (!privateKey && keyBuffer[0] === 0x30) {
         try {
-          const p8 = forge.asn1.fromDer(forge.util.createBuffer(keyBuffer.toString("binary")))
+          const forgeBuffer = forge.util.createBuffer(keyBuffer.toString('binary'));
+          const p8 = forge.asn1.fromDer(forgeBuffer)
           privateKey = forge.pki.privateKeyFromAsn1(p8)
         } catch {}
       }
       // 5. Intentar como DER PKCS#8 encriptado (binario)
       if (!privateKey && keyBuffer[0] === 0x30) {
         try {
-          const p8 = forge.asn1.fromDer(forge.util.createBuffer(keyBuffer.toString("binary")))
-          privateKey = forge.pki.decryptPrivateKeyInfo(p8, this.contrasenaLlave)
+          const forgeBuffer = forge.util.createBuffer(keyBuffer.toString('binary'));
+          const p8 = forge.asn1.fromDer(forgeBuffer)
+          let decrypted = forge.pki.decryptPrivateKeyInfo(p8, this.contrasenaLlave)
+          // Si el resultado es ASN.1, convertir a PrivateKey
+          if (decrypted && typeof decrypted === 'object' && decrypted.constructor && decrypted.constructor.name === 'Object' && decrypted.type === undefined) {
+            // Si decrypted es ASN.1
+            privateKey = forge.pki.privateKeyFromAsn1(decrypted)
+          } else if (decrypted) {
+            privateKey = decrypted
+          }
         } catch {}
       }
 
