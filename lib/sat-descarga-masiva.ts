@@ -63,26 +63,49 @@ export class SATDescargaMasiva {
    */
   private initializePrivateKey(): void {
     try {
-      // Intentar cargar la llave privada encriptada
-      const keyPem = this.llavePrivada.toString("utf8")
+      // Intentar cargar la llave privada en todos los formatos posibles
+      let privateKey: forge.pki.PrivateKey | null = null
+      const keyBuffer = this.llavePrivada
+      const keyUtf8 = keyBuffer.toString("utf8")
 
-      if (keyPem.includes("-----BEGIN ENCRYPTED PRIVATE KEY-----")) {
-        // Es una llave privada encriptada en formato PEM
-        this.privateKey = forge.pki.decryptRsaPrivateKey(keyPem, this.contrasenaLlave)
-      } else if (keyPem.includes("-----BEGIN PRIVATE KEY-----")) {
-        // Es una llave privada no encriptada en formato PEM
-        this.privateKey = forge.pki.privateKeyFromPem(keyPem)
-      } else {
-        // Asumir que es un archivo .key binario del SAT
-        const p8Der = forge.util.decode64(this.llavePrivada.toString("base64"))
-        const p8 = forge.asn1.fromDer(p8Der)
-        this.privateKey = forge.pki.decryptPrivateKeyInfo(p8, this.contrasenaLlave)
+      // 1. Intentar como PEM encriptado
+      if (keyUtf8.includes("-----BEGIN ENCRYPTED PRIVATE KEY-----")) {
+        try {
+          privateKey = forge.pki.decryptRsaPrivateKey(keyUtf8, this.contrasenaLlave)
+        } catch {}
       }
+      // 2. Intentar como PEM sin encriptar
+      if (!privateKey && keyUtf8.includes("-----BEGIN PRIVATE KEY-----")) {
+        try {
+          privateKey = forge.pki.privateKeyFromPem(keyUtf8)
+        } catch {}
+      }
+      // 3. Intentar como PEM PKCS#1
+      if (!privateKey && keyUtf8.includes("-----BEGIN RSA PRIVATE KEY-----")) {
+        try {
+          privateKey = forge.pki.privateKeyFromPem(keyUtf8)
+        } catch {}
+      }
+      // 4. Intentar como DER PKCS#8 (binario)
+      if (!privateKey && keyBuffer[0] === 0x30) {
+        try {
+          const p8 = forge.asn1.fromDer(forge.util.createBuffer(keyBuffer.toString("binary")))
+          privateKey = forge.pki.privateKeyFromAsn1(p8)
+        } catch {}
+      }
+      // 5. Intentar como DER PKCS#8 encriptado (binario)
+      if (!privateKey && keyBuffer[0] === 0x30) {
+        try {
+          const p8 = forge.asn1.fromDer(forge.util.createBuffer(keyBuffer.toString("binary")))
+          privateKey = forge.pki.decryptPrivateKeyInfo(p8, this.contrasenaLlave)
+        } catch {}
+      }
+
+      this.privateKey = privateKey
 
       if (!this.privateKey) {
-        throw new Error("No se pudo cargar la llave privada")
+        throw new Error("No se pudo cargar la llave privada en ningún formato soportado (PEM/DER, PKCS#1/PKCS#8, encriptado o no encriptado). Verifica el archivo y la contraseña.")
       }
-      // Validar que la llave tenga el método .sign
       if (typeof (this.privateKey as any).sign !== 'function') {
         throw new Error("La llave privada fue cargada pero no es válida para firmar (no tiene método .sign). Verifica el formato y la contraseña.")
       }
