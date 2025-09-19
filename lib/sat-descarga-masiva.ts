@@ -82,6 +82,10 @@ export class SATDescargaMasiva {
       if (!this.privateKey) {
         throw new Error("No se pudo cargar la llave privada")
       }
+      // Validar que la llave tenga el método .sign
+      if (typeof (this.privateKey as any).sign !== 'function') {
+        throw new Error("La llave privada fue cargada pero no es válida para firmar (no tiene método .sign). Verifica el formato y la contraseña.")
+      }
 
       console.log("[SAT] Llave privada inicializada correctamente")
     } catch (error) {
