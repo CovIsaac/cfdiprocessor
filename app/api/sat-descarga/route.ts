@@ -121,8 +121,17 @@ export async function POST(request: NextRequest) {
           )
         }
 
+        // Validar rango máximo de 31 días
+        const diffDays = (fechaFin.getTime() - fechaIni.getTime()) / (1000 * 60 * 60 * 24)
+        if (diffDays > 31) {
+          return NextResponse.json(
+            { error: "El rango de fechas no puede ser mayor a 31 días." },
+            { status: 400 },
+          )
+        }
+
         try {
-          console.log(`[SAT API] Creando solicitud: ${fechaInicial} a ${fechaFinal}, tipo: ${tipoSolicitud}`)
+          console.log(`[SAT API] Creando solicitud: ${fechaInicial} a ${fechaFinal}, tipo: ${tipoSolicitud}, rfcEmisor: ${rfcEmisor}, rfcReceptor: ${rfcReceptor}`)
           const idSolicitudNueva = await satClient.crearSolicitud(
             fechaInicial,
             fechaFinal,
@@ -135,12 +144,17 @@ export async function POST(request: NextRequest) {
             idSolicitud: idSolicitudNueva,
             mensaje: "Solicitud creada exitosamente",
           })
-        } catch (error) {
+        } catch (error: any) {
+          // Log detallado para producción
+          if (error?.response?.data) {
+            console.error("[SAT API] Error al crear solicitud - respuesta SAT:", error.response.data)
+          }
           console.error("[SAT API] Error al crear solicitud:", error)
           return NextResponse.json(
             {
               error: "Error al crear la solicitud en el SAT. Intente nuevamente.",
               details: error instanceof Error ? error.message : String(error),
+              satResponse: error?.response?.data || null,
             },
             { status: 500 },
           )

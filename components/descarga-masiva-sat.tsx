@@ -526,7 +526,9 @@ export function DescargaMasivaSAT() {
                           value={startDate ? format(startDate, "yyyy-MM-dd") : ""}
                           onChange={(e) => {
                             if (e.target.value) {
-                              setStartDate(new Date(e.target.value))
+                              // Parseo manual para evitar desfase por zona horaria
+                              const [year, month, day] = e.target.value.split('-').map(Number)
+                              setStartDate(new Date(year, month - 1, day))
                             }
                           }}
                           className="h-10 border-slate-300 hover:border-slate-400 pr-10"
@@ -546,7 +548,9 @@ export function DescargaMasivaSAT() {
                           value={endDate ? format(endDate, "yyyy-MM-dd") : ""}
                           onChange={(e) => {
                             if (e.target.value) {
-                              setEndDate(new Date(e.target.value))
+                              // Parseo manual para evitar desfase por zona horaria
+                              const [year, month, day] = e.target.value.split('-').map(Number)
+                              setEndDate(new Date(year, month - 1, day))
                             }
                           }}
                           className="h-10 border-slate-300 hover:border-slate-400 pr-10"
