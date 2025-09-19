@@ -102,8 +102,7 @@ export class SATDescargaMasiva {
           const p8 = forge.asn1.fromDer(forgeBuffer)
           let decrypted = forge.pki.decryptPrivateKeyInfo(p8, this.contrasenaLlave)
           // Si el resultado es ASN.1, convertir a PrivateKey
-          if (decrypted && typeof decrypted === 'object' && decrypted.constructor && decrypted.constructor.name === 'Object' && decrypted.type === undefined) {
-            // Si decrypted es ASN.1
+          if (decrypted && typeof decrypted === 'object' && typeof (decrypted as any).sign !== 'function') {
             privateKey = forge.pki.privateKeyFromAsn1(decrypted)
           } else if (decrypted) {
             privateKey = decrypted
@@ -146,24 +145,15 @@ export class SATDescargaMasiva {
   /**
    * Calcula el SignatureValue según la documentación del SAT
    */
-  private calcularSignatureValue(digestValue: string): string {
+  private calcularSignatureValue(signedInfoXml: string): string {
     if (!this.privateKey) {
       throw new Error("Llave privada no inicializada")
     }
-
-    // Crear el SignedInfo sin espacios
-    const signedInfoXml = `<SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/><Reference URI="#_0"><Transforms><Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></Transforms><DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/><DigestValue>${digestValue}</DigestValue></Reference></SignedInfo>`
-
-    // Calcular SHA1 del SignedInfo
-    const hash = crypto.createHash("sha1")
-    hash.update(signedInfoXml, "utf8")
-    const digestBytes = hash.digest()
-
-    // Firmar con RSA-SHA1
-    const signature = this.privateKey.sign(digestBytes)
-
-    // Codificar a base64
-    return forge.util.encode64(signature)
+    // Firmar el SignedInfo XML usando SHA1, como requiere el SAT
+    const md = forge.md.sha1.create();
+    md.update(signedInfoXml, "utf8");
+    const signature = this.privateKey.sign(md);
+    return forge.util.encode64(signature);
   }
 
   /**
@@ -244,7 +234,9 @@ export class SATDescargaMasiva {
       const digestValue = this.calcularDigestValue(created, expires)
 
       // Calcular SignatureValue según la documentación
-      const signatureValue = this.calcularSignatureValue(digestValue)
+  // Crear el SignedInfo XML
+  const signedInfoXml = `<SignedInfo><CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/><Reference URI="#_0"><Transforms><Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></Transforms><DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/><DigestValue>${digestValue}</DigestValue></Reference></SignedInfo>`;
+  const signatureValue = this.calcularSignatureValue(signedInfoXml)
 
       // Crear el XML de autenticación según la documentación oficial
       const soapEnvelope = this.crearSoapEnvelopeAutenticacion(
