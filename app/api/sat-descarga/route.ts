@@ -145,7 +145,8 @@ export async function POST(request: NextRequest) {
             mensaje: "Solicitud creada exitosamente",
           })
         } catch (error: any) {
-          // Log detallado para producción
+          // Log detallado para producción y respuesta clara al frontend
+          let satError = error?.response?.data || error?.details || error?.message || null
           if (error?.response?.data) {
             console.error("[SAT API] Error al crear solicitud - respuesta SAT:", error.response.data)
           }
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
             {
               error: "Error al crear la solicitud en el SAT. Intente nuevamente.",
               details: error instanceof Error ? error.message : String(error),
-              satResponse: error?.response?.data || null,
+              satResponse: satError,
             },
             { status: 500 },
           )
