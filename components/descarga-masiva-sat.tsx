@@ -6,7 +6,6 @@ import { useState, useRef, useContext, useEffect } from "react"
 import {
   CalendarIcon,
   Download,
-  Loader2,
   FileText,
   RefreshCw,
   Upload,
@@ -17,6 +16,7 @@ import {
   ListChecks,
   PackageSearch,
 } from "lucide-react"
+import { FancyLoader } from "@/components/ui/fancy-loader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -37,7 +37,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 // Mapeo de estados a texto y color
 const estadoSolicitudMap: Record<number, { texto: string; color: string; icon: React.ElementType }> = {
   1: { texto: "Aceptada", color: "bg-blue-50 text-blue-700 border-blue-200", icon: Check },
-  2: { texto: "En Proceso", color: "bg-yellow-50 text-yellow-700 border-yellow-200", icon: Loader2 },
+  2: { texto: "En Proceso", color: "bg-yellow-50 text-yellow-700 border-yellow-200", icon: Settings },
   3: { texto: "Terminada", color: "bg-green-50 text-green-700 border-green-200", icon: Check },
   4: { texto: "Error", color: "bg-red-50 text-red-700 border-red-200", icon: AlertCircle },
   5: { texto: "Rechazada", color: "bg-red-50 text-red-700 border-red-200", icon: AlertCircle },
@@ -718,10 +718,7 @@ export function DescargaMasivaSAT() {
                     className="w-full sm:w-auto min-w-[200px] h-10 text-base bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Creando Solicitud...
-                      </>
+                      <span className="w-full flex justify-center"><FancyLoader label="Creando Solicitud..." /></span>
                     ) : (
                       <>
                         <FileText className="mr-2 h-5 w-5" />
@@ -790,7 +787,7 @@ export function DescargaMasivaSAT() {
                                   title="Verificar Estado"
                                 >
                                   {verificando === solicitud.idSolicitud ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                                    <span className="flex items-center justify-center"><FancyLoader label="" /></span>
                                   ) : (
                                     <RefreshCw className="h-4 w-4 text-slate-500" />
                                   )}
@@ -895,7 +892,7 @@ export function DescargaMasivaSAT() {
                         disabled={verificando === solicitudSeleccionada.idSolicitud}
                       >
                         {verificando === solicitudSeleccionada.idSolicitud ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin text-blue-500" />
+                          <span className="flex items-center justify-center"><FancyLoader label="" /></span>
                         ) : (
                           <RefreshCw className="mr-2 h-4 w-4 text-slate-500" />
                         )}
@@ -939,7 +936,7 @@ export function DescargaMasivaSAT() {
                                       disabled={descargando === paqueteId}
                                     >
                                       {descargando === paqueteId ? (
-                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        <span className="flex items-center justify-center"><FancyLoader label="Descargando..." /></span>
                                       ) : (
                                         <Download className="mr-2 h-4 w-4" />
                                       )}

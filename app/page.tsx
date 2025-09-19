@@ -2,7 +2,7 @@
 
 import { useContext } from "react"
 import { FileUploader, ProcessedDataContext, ProcessedDataProvider } from "@/components/file-uploader"
-import { DIOTModule } from "@/components/diot-module"
+import DiotModule from "@/components/diot-module"
 import { DescargaMasivaSAT } from "@/components/descarga-masiva-sat"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { FileText, FileSpreadsheet, CloudDownload } from "lucide-react"
@@ -69,6 +69,5 @@ export default function Home() {
 }
 
 function DIOTModuleWrapper() {
-  const { processedData } = useContext(ProcessedDataContext)
-  return <DIOTModule processedData={processedData} />
+  return <DiotModule />
 }

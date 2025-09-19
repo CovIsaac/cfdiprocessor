@@ -234,6 +234,55 @@ export function processCFDI(xmlDoc: Document, rfcReceptor = "GOGR810728TV5"): CF
   }
 }
 
+// Genera el archivo DIOT TXT a partir de los CFDI procesados
+export function generarDIOTTXT(cfdis: CFDIData[]): string {
+  // Agrupa por RFC de proveedor (solo gastos)
+  const proveedores: { [rfc: string]: any } = {}
+
+  for (const cfdi of cfdis) {
+    if (cfdi.TIPO_DOCUMENTO !== "Gasto") continue // Solo gastos (facturas recibidas)
+
+    const rfc = cfdi.RFC_EMISOR
+    if (!proveedores[rfc]) {
+      proveedores[rfc] = {
+        RFC: rfc,
+        NOMBRE: cfdi.NOMBRE_EMISOR,
+        IVA16: 0,
+        IVA0: 0,
+        IVAEXENTO: 0,
+        IVA8: 0,
+        IVARETENIDO: 0,
+        ISRRETENIDO: 0,
+        BASE16: 0,
+        // ...otros campos según la DIOT
+      }
+    }
+    // Suma los importes
+    // IVA 16%
+    if (cfdi.IVA > 0) {
+      proveedores[rfc].IVA16 += cfdi.IVA
+      proveedores[rfc].BASE16 += (cfdi.SUBTOTAL - cfdi.DESCUENTO)
+    }
+    // IVA 0% y exento (ajusta según tus reglas)
+    if (cfdi.IVA === 0 && cfdi.TOTAL > 0) {
+      proveedores[rfc].IVA0 += (cfdi.SUBTOTAL - cfdi.DESCUENTO)
+    }
+    // Retenciones
+    proveedores[rfc].IVARETENIDO += cfdi.RETENCION_IVA
+    proveedores[rfc].ISRRETENIDO += cfdi.RETENCION_ISR
+    // ...otros acumulados según la DIOT
+  }
+
+  // Genera el TXT (ajusta el orden y los campos según el instructivo oficial del SAT)
+  let txt = ""
+  for (const rfc in proveedores) {
+    const p = proveedores[rfc]
+    // Ejemplo de línea DIOT: TipoTercero|RFC|Nombre|Nacionalidad|TipoOperacion|IVA16|IVA0|IVAExento|IVA8|IVARet|ISRRet|
+    txt += `04|${p.RFC}|${p.NOMBRE}|1|85|${p.IVA16.toFixed(2)}|${p.IVA0.toFixed(2)}|${p.IVAEXENTO.toFixed(2)}|${p.IVA8.toFixed(2)}|${p.IVARETENIDO.toFixed(2)}|${p.ISRRETENIDO.toFixed(2)}|${p.BASE16.toFixed(2)}|\n`
+    // Ajusta los campos y el orden según el instructivo oficial
+  }
+  return txt
+}
 // Función para procesar complemento de Pagos 2.0 (CFDI 4.0)
 function procesarPagos20(xmlDoc: Document, cfdiData: CFDIData): void {
   const pagosNode = xmlDoc.getElementsByTagNameNS("http://www.sat.gob.mx/Pagos20", "Pagos")[0]

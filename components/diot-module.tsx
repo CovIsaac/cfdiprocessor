@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { CalendarIcon, FileSpreadsheet, Loader2, AlertCircle, FileText, Check } from "lucide-react"
+import { CalendarIcon, FileSpreadsheet, AlertCircle, FileText, Check } from "lucide-react"
+import { FancyLoader } from "@/components/ui/fancy-loader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,7 +16,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { generateDIOT } from "@/lib/diot-generator"
+// import { generateDIOT } from "@/lib/diot-generator"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 // Tipos para la DIOT
@@ -34,19 +35,16 @@ interface DIOTEntry {
   importeNeto: number
   facturas: number
 }
-
-export function DIOTModule({ processedData }: { processedData: any[] }) {
+export default function DiotModule() {
   const [activeTab, setActiveTab] = useState("config")
   const [month, setMonth] = useState<number>(new Date().getMonth())
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const [date, setDate] = useState<Date | undefined>(new Date())
-  const [diotData, setDiotData] = useState<DIOTEntry[]>([])
+  const [xmlFiles, setXmlFiles] = useState<File[]>([])
+  const [rfcReceptor, setRfcReceptor] = useState<string>("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const [totalProveedores, setTotalProveedores] = useState(0)
-  const [totalIVA, setTotalIVA] = useState(0)
-  const [totalOperaciones, setTotalOperaciones] = useState(0)
 
   // Generar años para el selector (5 años atrás y 1 adelante)
   const currentYear = new Date().getFullYear()
@@ -83,93 +81,43 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
     }
   }, [date])
 
-  // Generar DIOT
-  const handleGenerateDIOT = async () => {
-    if (!processedData || processedData.length === 0) {
-      setError("No hay datos procesados para generar la DIOT")
+  // Subir XMLs y descargar DIOT TXT
+  const handleUploadAndDownloadDIOT = async () => {
+    if (!xmlFiles || xmlFiles.length === 0) {
+      setError("Debes seleccionar al menos un archivo XML")
       return
     }
-
     setLoading(true)
     setError(null)
     setSuccess(null)
-
     try {
-      // Filtrar facturas del mes seleccionado
-      const startDate = new Date(year, month, 1)
-      const endDate = new Date(year, month + 1, 0) // Último día del mes
+      const formData = new FormData()
+      xmlFiles.forEach((file) => formData.append("files", file))
+      formData.append("month", month.toString())
+      formData.append("year", year.toString())
+      formData.append("rfcReceptor", rfcReceptor.trim())
 
-      // Formatear fechas para comparación
-      const startDateStr = format(startDate, "yyyy-MM-dd")
-      const endDateStr = format(endDate, "yyyy-MM-dd")
-
-      // Generar datos DIOT
-      const result = await generateDIOT(processedData, startDateStr, endDateStr)
-
-      setDiotData(result.entries)
-      setTotalProveedores(result.entries.length)
-      setTotalIVA(result.totalIVA)
-      setTotalOperaciones(result.totalOperaciones)
-
-      setSuccess(`DIOT generada correctamente para ${months[month].label} ${year}`)
-      setActiveTab("preview")
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al generar la DIOT")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Exportar DIOT
-  const handleExportDIOT = async (format: "txt" | "excel") => {
-    if (diotData.length === 0) {
-      setError("No hay datos para exportar")
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
       const response = await fetch("/api/export-diot", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          data: diotData,
-          month,
-          year,
-          format,
-        }),
+        body: formData,
       })
-
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || "Error al exportar la DIOT")
+        throw new Error(errorData.error || "Error al generar la DIOT")
       }
-
       // Descargar el archivo
       const blob = await response.blob()
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url
-
-      // Nombre del archivo según el formato
-      const fileName =
-        format === "txt"
-          ? `DIOT_${year}_${String(month + 1).padStart(2, "0")}.txt`
-          : `DIOT_${year}_${String(month + 1).padStart(2, "0")}.xlsx`
-
-      a.download = fileName
+      a.download = `diot_${year}_${String(month + 1).padStart(2, "0")}.txt`
       document.body.appendChild(a)
       a.click()
       window.URL.revokeObjectURL(url)
       a.remove()
-
-      setSuccess(`DIOT exportada correctamente en formato ${format.toUpperCase()}`)
+      setSuccess(`DIOT generada y descargada correctamente para ${months[month].label} ${year}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al exportar la DIOT")
+      setError(err instanceof Error ? err.message : "Error al generar la DIOT")
     } finally {
       setLoading(false)
     }
@@ -205,22 +153,37 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
               <CalendarIcon className="mr-2 h-4 w-4" />
               Configuración
             </TabsTrigger>
-            <TabsTrigger
-              value="preview"
-              disabled={diotData.length === 0}
-              className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:shadow-none py-3"
-            >
-              <FileText className="mr-2 h-4 w-4" />
-              Vista Previa
-            </TabsTrigger>
+                 {/*
+                 <TabsTrigger
+                   value="preview"
+                   disabled={true}
+                   className="flex-1 rounded-none data-[state=active]:bg-white data-[state=active]:shadow-none py-3"
+                 >
+                   <FileText className="mr-2 h-4 w-4" />
+                   Vista Previa
+                 </TabsTrigger>
+                 */}
           </TabsList>
 
           <TabsContent value="config" className="p-6 bg-white">
             <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <div>
-                  <h3 className="text-lg font-medium mb-4">Período de la DIOT</h3>
+                  <h3 className="text-lg font-medium mb-4">Subir XMLs y configurar DIOT</h3>
                   <div className="grid gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Archivos XML</label>
+                      <input
+                        type="file"
+                        accept=".xml"
+                        multiple
+                        onChange={(e) => setXmlFiles(Array.from(e.target.files || []))}
+                        className="block w-full border border-slate-200 rounded px-2 py-1 text-sm"
+                      />
+                      <div className="text-xs text-slate-500 mt-1">
+                        Puedes seleccionar uno o varios archivos XML descargados del SAT.
+                      </div>
+                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <label className="text-sm font-medium">Mes</label>
@@ -253,39 +216,19 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
                         </Select>
                       </div>
                     </div>
-
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Seleccionar en calendario</label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal",
-                              !date && "text-muted-foreground",
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {date ? format(date, "MMMM yyyy", { locale: es }) : <span>Seleccionar mes</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={date}
-                            onSelect={setDate}
-                            initialFocus
-                            locale={es}
-                            captionLayout="dropdown-buttons"
-                            fromYear={currentYear - 4}
-                            toYear={currentYear + 1}
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <label className="text-sm font-medium">RFC Receptor (opcional)</label>
+                      <input
+                        type="text"
+                        value={rfcReceptor}
+                        onChange={(e) => setRfcReceptor(e.target.value)}
+                        placeholder="RFC para filtrar CFDIs (por defecto tu RFC)"
+                        className="block w-full border border-slate-200 rounded px-2 py-1 text-sm"
+                        maxLength={13}
+                      />
                     </div>
                   </div>
                 </div>
-
                 <div className="bg-slate-50 p-4 rounded-lg">
                   <h3 className="text-lg font-medium mb-4">Información</h3>
                   <div className="space-y-4">
@@ -310,7 +253,6 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
                   </div>
                 </div>
               </div>
-
               {error && (
                 <Alert variant="destructive">
                   <AlertCircle className="h-4 w-4" />
@@ -318,7 +260,6 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-
               {success && (
                 <Alert className="bg-green-50 text-green-800 border-green-200">
                   <Check className="h-4 w-4 text-green-500" />
@@ -326,22 +267,18 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
                   <AlertDescription>{success}</AlertDescription>
                 </Alert>
               )}
-
               <div className="flex justify-center pt-2">
                 <Button
-                  onClick={handleGenerateDIOT}
-                  disabled={loading || !processedData || processedData.length === 0}
+                  onClick={handleUploadAndDownloadDIOT}
+                  disabled={loading || xmlFiles.length === 0}
                   className="w-full sm:w-auto bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600"
                 >
                   {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Procesando...
-                    </>
+                    <span className="w-full flex justify-center"><FancyLoader label="Generando DIOT..." /></span>
                   ) : (
                     <>
                       <FileText className="mr-2 h-4 w-4" />
-                      Generar DIOT
+                      Generar y Descargar DIOT
                     </>
                   )}
                 </Button>
@@ -349,140 +286,11 @@ export function DIOTModule({ processedData }: { processedData: any[] }) {
             </div>
           </TabsContent>
 
-          <TabsContent value="preview" className="p-0 bg-white">
-            {diotData.length > 0 ? (
-              <div className="space-y-6">
-                <div className="p-4 bg-slate-50 border-b">
-                  <div className="flex flex-wrap gap-3 mb-4">
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1 text-sm">
-                      <FileText className="h-4 w-4 mr-1" />
-                      Período: {months[month].label} {year}
-                    </Badge>
-                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 px-3 py-1 text-sm">
-                      Proveedores: {totalProveedores}
-                    </Badge>
-                    <Badge
-                      variant="outline"
-                      className="bg-purple-50 text-purple-700 border-purple-200 px-3 py-1 text-sm"
-                    >
-                      Total IVA: {formatCurrency(totalIVA)}
-                    </Badge>
-                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 px-3 py-1 text-sm">
-                      Total Operaciones: {formatCurrency(totalOperaciones)}
-                    </Badge>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            onClick={() => handleExportDIOT("txt")}
-                            disabled={loading}
-                            variant="outline"
-                            className="bg-white"
-                          >
-                            {loading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileText className="h-4 w-4 mr-2" />
-                            )}
-                            Exportar TXT
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Formato para importar al sistema del SAT</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            onClick={() => handleExportDIOT("excel")}
-                            disabled={loading}
-                            className="bg-gradient-to-r from-green-600 to-green-500 hover:from-green-700 hover:to-green-600"
-                          >
-                            {loading ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileSpreadsheet className="h-4 w-4 mr-2" />
-                            )}
-                            Exportar Excel
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Formato detallado para revisión</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                </div>
-
-                <div className="px-4">
-                  <ScrollArea className="h-[500px] w-full rounded-md border">
-                    <Table>
-                      <TableHeader className="sticky top-0 bg-slate-50 z-10">
-                        <TableRow className="hover:bg-transparent">
-                          <TableHead className="w-[150px]">RFC</TableHead>
-                          <TableHead>Proveedor</TableHead>
-                          <TableHead>Tipo Operación</TableHead>
-                          <TableHead>Tipo Tercero</TableHead>
-                          <TableHead className="text-right">IVA 16%</TableHead>
-                          <TableHead className="text-right">IVA 0%</TableHead>
-                          <TableHead className="text-right">Exento</TableHead>
-                          <TableHead className="text-right">IVA Retenido</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead className="text-center">Facturas</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {diotData.map((entry, index) => (
-                          <TableRow key={index} className="hover:bg-slate-50">
-                            <TableCell className="font-medium">{entry.rfc}</TableCell>
-                            <TableCell>{entry.nombreProveedor}</TableCell>
-                            <TableCell>{entry.tipoOperacion}</TableCell>
-                            <TableCell>{entry.tipoTercero}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(entry.iva16)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(entry.iva0)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(entry.ivaExento)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(entry.ivaRetenido)}</TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(entry.importeTotal)}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                                {entry.facturas}
-                              </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </ScrollArea>
-                </div>
-
-                {error && (
-                  <Alert variant="destructive" className="mx-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Error</AlertTitle>
-                    <AlertDescription>{error}</AlertDescription>
-                  </Alert>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-16 bg-slate-50">
-                <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 mb-4">
-                  <FileText className="h-6 w-6 text-slate-500" />
-                </div>
-                <p className="text-slate-500 mb-4">No hay datos DIOT para mostrar.</p>
-                <Button variant="outline" onClick={() => setActiveTab("config")}>
-                  Configurar DIOT
-                </Button>
-              </div>
-            )}
-          </TabsContent>
+             {/*
+             <TabsContent value="preview" className="p-0 bg-white">
+               Vista previa deshabilitada: la DIOT se genera y descarga directamente desde el backend.
+             </TabsContent>
+             */}
         </Tabs>
       </CardContent>
 

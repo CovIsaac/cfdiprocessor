@@ -1,90 +1,70 @@
-import { type NextRequest, NextResponse } from "next/server"
-import * as XLSX from "xlsx"
-import { generateDIOTText } from "@/lib/diot-generator"
+import { NextRequest, NextResponse } from "next/server"
+import { processCFDI, generarDIOTTXT } from "@/lib/cfdi-processor"
+
+export const runtime = "edge"
 
 export async function POST(req: NextRequest) {
   try {
-    const { data, month, year, format } = await req.json()
-
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return NextResponse.json({ message: "No hay datos para exportar" }, { status: 400 })
+    // Espera un form-data con archivos XML y campos month/year
+    const contentType = req.headers.get("content-type") || ""
+    if (!contentType.includes("multipart/form-data")) {
+      return NextResponse.json({ error: "Se requiere multipart/form-data con archivos XML" }, { status: 400 })
     }
 
-    // Exportar según el formato solicitado
-    if (format === "txt") {
-      // Generar texto en formato DIOT
-      const diotText = generateDIOTText(data, month, year)
+    const formData = await req.formData()
+    const files = formData.getAll("files")
+    const month = Number(formData.get("month"))
+    const year = Number(formData.get("year"))
+    const rfcReceptor = formData.get("rfcReceptor")?.toString() || "GOGR810728TV5"
 
-      // Devolver el archivo de texto
-      return new NextResponse(diotText, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "Content-Disposition": `attachment; filename="DIOT_${year}_${String(month + 1).padStart(2, "0")}.txt"`,
-        },
-      })
-    } else if (format === "excel") {
-      // Crear un nuevo libro de Excel
-      const workbook = XLSX.utils.book_new()
-
-      // Crear una hoja de cálculo con los datos
-      const worksheet = XLSX.utils.json_to_sheet(data)
-
-      // Configurar anchos de columna
-      const columnWidths = {
-        A: 15, // RFC
-        B: 30, // Nombre Proveedor
-        C: 15, // Tipo Operación
-        D: 15, // Tipo Tercero
-        E: 15, // Tipo Tasa
-        F: 15, // Importe Total
-        G: 15, // IVA 16%
-        H: 15, // IVA 8%
-        I: 15, // IVA 0%
-        J: 15, // IVA Exento
-        K: 15, // IVA Retenido
-        L: 15, // Importe Neto
-        M: 10, // Facturas
-      }
-
-      worksheet["!cols"] = Object.keys(columnWidths).map((col) => ({
-        wch: columnWidths[col as keyof typeof columnWidths],
-      }))
-
-      // Aplicar formatos de celda para montos
-      for (let i = 0; i < data.length; i++) {
-        const rowIndex = i + 1 // +1 para saltar la fila de encabezado
-
-        // Aplicar formato de moneda a las columnas de montos
-        const moneyColumns = ["F", "G", "H", "I", "J", "K", "L"]
-        moneyColumns.forEach((col) => {
-          const cellRef = `${col}${rowIndex + 1}`
-          if (worksheet[cellRef]) {
-            worksheet[cellRef].z = '"$"#,##0.00'
-          }
-        })
-      }
-
-      // Añadir la hoja al libro
-      XLSX.utils.book_append_sheet(workbook, worksheet, "DIOT")
-
-      // Convertir el libro a un buffer
-      const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" })
-
-      // Devolver el archivo Excel
-      return new NextResponse(buffer, {
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="DIOT_${year}_${String(month + 1).padStart(2, "0")}.xlsx"`,
-        },
-      })
-    } else {
-      return NextResponse.json({ message: "Formato no soportado" }, { status: 400 })
+    if (!files || files.length === 0) {
+      return NextResponse.json({ error: "No se recibieron archivos XML" }, { status: 400 })
     }
-  } catch (error) {
-    console.error("Error al exportar DIOT:", error)
-    return NextResponse.json(
-      { message: error instanceof Error ? error.message : "Error al exportar DIOT" },
-      { status: 500 },
+    if (isNaN(month) || isNaN(year)) {
+      return NextResponse.json({ error: "Mes o año inválido" }, { status: 400 })
+    }
+
+    // Procesar todos los XML
+    const cfdis = []
+    for (const file of files) {
+      if (!(file instanceof File)) continue
+      const text = await file.text()
+      try {
+        const parser = new DOMParser()
+        const xmlDoc = parser.parseFromString(text, "text/xml")
+        const cfdi = processCFDI(xmlDoc, rfcReceptor)
+        if (cfdi) cfdis.push(cfdi)
+      } catch (e) {
+        // Ignorar archivos inválidos
+      }
+    }
+
+    // Filtrar por periodo seleccionado
+    const startDate = `${year}-${String(month + 1).padStart(2, "0")}-01`
+    const endDate = new Date(year, month + 1, 0)
+    const endDateStr = endDate.toISOString().slice(0, 10)
+    const cfdisPeriodo = cfdis.filter(
+      (c) => c.FECHA_CFDI >= startDate && c.FECHA_CFDI <= endDateStr && c.TIPO_DOCUMENTO === "Gasto"
     )
+
+    if (cfdisPeriodo.length === 0) {
+      return NextResponse.json({ error: "No hay CFDIs de gastos en el periodo seleccionado" }, { status: 400 })
+    }
+
+    // Generar el archivo DIOT TXT
+    const txt = generarDIOTTXT(cfdisPeriodo)
+    const encoder = new TextEncoder()
+    const buffer = encoder.encode(txt)
+
+    return new NextResponse(buffer, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Disposition": `attachment; filename=diot_${year}_${String(month + 1).padStart(2, "0")}.txt`,
+        "Cache-Control": "no-store",
+      },
+    })
+  } catch (error) {
+    return NextResponse.json({ error: "Error al generar el archivo DIOT" }, { status: 500 })
   }
 }
