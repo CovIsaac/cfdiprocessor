@@ -32,6 +32,22 @@ import type { SolicitudDescarga } from "@/lib/sat-descarga-masiva"
 import { useToast } from "@/hooks/use-toast"
 import { ProcessedDataContext } from "@/components/file-uploader"
 import { DataTable } from "@/components/data-table"
+
+// Helpers para sumar solo Ingreso/Gasto
+function sumaPorTipo(data: any[], tipo: "Ingreso" | "Gasto", campo = "TOTAL") {
+  return data
+    .filter((item) => item.TIPO_DOCUMENTO === tipo)
+    .reduce((sum, item) => sum + (item[campo] || 0), 0)
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+}
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 // Mapeo de estados a texto y color
@@ -988,7 +1004,17 @@ export function DescargaMasivaSAT() {
 
             <TabsContent value="results" className="p-4 md:p-6 bg-white">
               {filteredDataTable.length > 0 ? (
-                <DataTable data={filteredDataTable} onFilteredDataChange={setFilteredDataTable} />
+                <>
+                  <div className="mb-4 flex flex-wrap gap-4">
+                    <div className="bg-green-50 border border-green-200 rounded px-4 py-2 text-green-800 text-sm font-medium">
+                      Total Ingresos: {formatCurrency(sumaPorTipo(filteredDataTable, "Ingreso"))}
+                    </div>
+                    <div className="bg-red-50 border border-red-200 rounded px-4 py-2 text-red-800 text-sm font-medium">
+                      Total Gastos: {formatCurrency(sumaPorTipo(filteredDataTable, "Gasto"))}
+                    </div>
+                  </div>
+                  <DataTable data={filteredDataTable} onFilteredDataChange={setFilteredDataTable} />
+                </>
               ) : (
                 <div className="text-center py-12 bg-slate-50 rounded-lg border border-dashed border-slate-300">
                   <TableIcon className="mx-auto h-12 w-12 text-slate-400 mb-4" />
